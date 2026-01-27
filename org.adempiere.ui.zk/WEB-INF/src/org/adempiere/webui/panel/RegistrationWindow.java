@@ -159,7 +159,7 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
         	try {
                 String v = nvl(txtIDNo.getValue());
                 if (!v.isEmpty()) {
-                    validateIdNo();                 // throws WrongValueException if invalid
+                    validateIdNo(txtIDNo, null);                 // throws WrongValueException if invalid
                     txtPassportNo.setDisabled(true);
                 } else {
                     txtPassportNo.setDisabled(false);
@@ -284,7 +284,7 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
         }
         
         if (!idNo.isEmpty()) {
-            validateIdNo(); // throws on invalid
+            validateIdNo(txtIDNo, null); // throws on invalid
         }
         
      // Redundant safety: block duplicate emails at creation time too
@@ -482,8 +482,14 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
         }
     }
     
-    private void validateIdNo() {
-        String id = nvl(txtIDNo.getValue());
+    public static void validateIdNo(Textbox txtIDNo, String idValue) {
+    	String id = null;
+    	if (txtIDNo != null) {
+    		id = nvl(txtIDNo.getValue());
+    	}else {
+    		id = nvl(idValue);
+    	}
+        
 
         // Fast guard for length/digits so we can give an immediate, clear message
         if (!id.matches("\\d{13}")) {
