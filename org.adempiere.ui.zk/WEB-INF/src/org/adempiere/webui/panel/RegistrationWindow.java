@@ -187,7 +187,7 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
 	 // Mobile number – validate on blur
 	    txtCellNo.addEventListener(Events.ON_CHANGE, ev -> {
 	        try {
-	            validateCellNo();                   // throws if invalid
+	            validateCellNo(txtCellNo, null);                   // throws if invalid
 	        } finally {
 	            updateButtonsState();
 	        }
@@ -270,7 +270,7 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
         if (name.isEmpty() || cellNo.isEmpty() || email.isEmpty() || otp.isEmpty()) {
             throw new IllegalArgumentException(Msg.getMsg(Env.getCtx(), "FillRequiredFields"));
         }
-        validateCellNo();
+        validateCellNo(txtCellNo, null);
         // Exactly one of ID or Passport
         if (idNo.isEmpty() && passportNo.isEmpty()) {
             throw new IllegalArgumentException(Msg.getMsg(Env.getCtx(), "EnterIdOrPassport"));
@@ -469,8 +469,11 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
 
     // 
     
-    private void validateCellNo() {
-        String cell = nvl(txtCellNo.getValue());
+    public static void validateCellNo(Textbox txtCellNo, String cellNo) {
+    	if (txtCellNo != null) {
+    		cellNo = txtCellNo.getValue();
+    	}
+        String cell = nvl(cellNo);
         // exactly 10 digits, no spaces, no symbols
         if (!cell.matches("\\d{10}")) {
             // AD_Message key recommended: "CellMustBe10Digits"
@@ -483,13 +486,10 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
     }
     
     public static void validateIdNo(Textbox txtIDNo, String idValue) {
-    	String id = null;
     	if (txtIDNo != null) {
-    		id = nvl(txtIDNo.getValue());
-    	}else {
-    		id = nvl(idValue);
+    		idValue = txtIDNo.getValue();
     	}
-        
+    	String id = nvl(idValue);
 
         // Fast guard for length/digits so we can give an immediate, clear message
         if (!id.matches("\\d{13}")) {
@@ -529,7 +529,21 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
         return cnt > 0;
     }
     
-    
+    public static void validateEmail(Textbox txtEmail, String email) {
+    	if (txtEmail != null)
+    		email = txtEmail.getValue();
+    	
+    	email = safeTrim(email);
+    	
+        if (!email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
+            String msg = Msg.getMsg(Env.getCtx(), "InvalidEMail");
+            if (msg == null || "InvalidEMail".equals(msg)) {
+                msg = "Please enter a valid email address.";
+            }
+
+            throw new WrongValueException(txtEmail, msg);
+        }    	
+    }
     
     private void validateEmailOnBlur() {
         String email = safeTrim(txtEmail.getValue());
@@ -541,18 +555,13 @@ public class RegistrationWindow extends Window implements org.zkoss.zk.ui.event.
             return;
         }
 
-        // Invalid format
-        if (!email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
-            String msg = Msg.getMsg(Env.getCtx(), "InvalidEMail");
-            if (msg == null || "InvalidEMail".equals(msg)) {
-                msg = "Please enter a valid email address.";
-            }
-
-            // explicitly disable actions before we throw
-            btnSendOtp.setDisabled(true);
+        try {
+        	validateEmail(txtEmail, null);
+        }catch (WrongValueException e) {
+        	btnSendOtp.setDisabled(true);
             btnRegisterUser.setDisabled(true);
-            throw new WrongValueException(txtEmail, msg);
-        }
+			throw e;
+		}
 
         // Email already registered
         if (isEmailRegistered(email)) {
