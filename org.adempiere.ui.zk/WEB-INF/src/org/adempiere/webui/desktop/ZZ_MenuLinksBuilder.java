@@ -200,17 +200,25 @@ public final class ZZ_MenuLinksBuilder {
 
 				
 		// Line 3: "1st Window | dd MMMM yyyy HH:mm - dd MMMM yyyy HH:mm"
+		
 		String windowLine = data.window + " Window | —";
 		if (data.startDT != null && data.endDT != null) {
-		    DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd MMMM uuuu HH:mm");
-		    windowLine = data.window + " Window | " + fmt.format(data.startDT) + " - " + fmt.format(data.endDT);
+		    DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd MMMM uuuu");
+		    DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
+
+		    windowLine =
+		        data.window + " Window | "
+		        + dateFmt.format(data.startDT) + " Time " + timeFmt.format(data.startDT)
+		        + " - "
+		        + dateFmt.format(data.endDT)   + " Time " + timeFmt.format(data.endDT);
 		}
 		Label lblWindow = new Label(windowLine);
+		
 		lblWindow.setStyle(
-		    "display:block;font-size:18px;font-weight:600;letter-spacing:0.3px;margin:0;"
-		  + "color:rgba(255,255,255,0.92);"
-		  + "text-shadow:0 1px 2px rgba(0,0,0,.5);"
-		);
+			    "display:block;font-size:18px;font-weight:600;letter-spacing:0.3px;margin:0;"
+			  + "color:rgba(255,255,255,0.92);"
+			  + "text-shadow:0 1px 2px rgba(0,0,0,.5);"
+			);
 		v.appendChild(lblWindow);
 
 		// Line 4: Remaining time (based on end timestamp vs now)
@@ -225,12 +233,12 @@ public final class ZZ_MenuLinksBuilder {
 		return wrapper;
 	}
 
+	
+	
 	private static String buildRemainingText(LocalDateTime endDT) {
 	    if (endDT == null) return "—";
 
-	    // Use server default zone (matches DB now() most of the time).
 	    ZoneId zone = ZoneId.systemDefault();
-
 	    ZonedDateTime now = ZonedDateTime.now(zone);
 	    ZonedDateTime end = endDT.atZone(zone);
 
@@ -240,14 +248,17 @@ public final class ZZ_MenuLinksBuilder {
 	        return "Closed";
 	    }
 
-	    long totalHours = d.toHours();
-	    long days = totalHours / 24;
-	    long hours = totalHours % 24;
+	    long totalMinutes = d.toMinutes();
 
-	    String dayPart = days + " day" + (days == 1 ? "" : "s");
-	    String hourPart = hours + " hour" + (hours == 1 ? "" : "s");
+	    long days = totalMinutes / (24 * 60);
+	    long rem = totalMinutes % (24 * 60);
 
-	    return dayPart + " " + hourPart + " remaining before close";
+	    long hours = rem / 60;
+	    long minutes = rem % 60;
+
+	    // Example: "15 days 7 hours 16 minutes"
+	    String timePart =  days + " days " + hours + " hours " + minutes + " minutes";
+	    return timePart + " remaining before close";
 	}
 	
 	private static class HeaderData {
