@@ -2,7 +2,10 @@ package org.adempiere.webui.desktop;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.time.LocalDate;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.List;
@@ -195,62 +198,114 @@ public final class ZZ_MenuLinksBuilder {
 		lblTitle.setStyle("display:block;font-size:36px;font-weight:900;text-transform:uppercase;line-height:1.0;color:#ff6a00;margin:0 0 8px 0;");
 		v.appendChild(lblTitle);
 
-		// Line 3: "1st Window | dd MMMM yyyy - dd MMMM yyyy"
+				
+		// Line 3: "1st Window | dd MMMM yyyy HH:mm - dd MMMM yyyy HH:mm"
+		
 		String windowLine = data.window + " Window | —";
-		if (data.start != null && data.end != null) {
-			DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd MMMM uuuu");
-			windowLine = data.window + " Window | " + fmt.format(data.start) + " - " + fmt.format(data.end);
+		if (data.startDT != null && data.endDT != null) {
+		    DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd MMMM uuuu");
+		    DateTimeFormatter timeFmt = DateTimeFormatter.ofPattern("HH:mm");
+
+		    windowLine =
+		        data.window + " Window | "
+		        + dateFmt.format(data.startDT) + " Time " + timeFmt.format(data.startDT)
+		        + " - "
+		        + dateFmt.format(data.endDT)   + " Time " + timeFmt.format(data.endDT);
 		}
 		Label lblWindow = new Label(windowLine);
-		//lblWindow.setStyle("display:block;font-size:18px;font-weight:500;opacity:0.9;letter-spacing:0.3px;margin:0;");
+		
 		lblWindow.setStyle(
-				"display:block;font-size:18px;font-weight:600;letter-spacing:0.3px;margin:0;"
-						+ "color:rgba(255,255,255,0.92);"
-						+ "text-shadow:0 1px 2px rgba(0,0,0,.5);"
-				);
+			    "display:block;font-size:18px;font-weight:600;letter-spacing:0.3px;margin:0;"
+			  + "color:rgba(255,255,255,0.92);"
+			  + "text-shadow:0 1px 2px rgba(0,0,0,.5);"
+			);
 		v.appendChild(lblWindow);
+
+		// Line 4: Remaining time (based on end timestamp vs now)
+		Label lblRemaining = new Label(buildRemainingText(data.endDT));
+		lblRemaining.setStyle(
+		    "display:block;font-size:16px;font-weight:600;letter-spacing:0.2px;margin:6px 0 0 0;"
+		  + "color:rgba(255,255,255,0.90);"
+		  + "text-shadow:0 1px 2px rgba(0,0,0,.5);"
+		);
+		v.appendChild(lblRemaining);
 
 		return wrapper;
 	}
 
+	
+	
+	private static String buildRemainingText(LocalDateTime endDT) {
+	    if (endDT == null) return "—";
+
+	    ZoneId zone = ZoneId.systemDefault();
+	    ZonedDateTime now = ZonedDateTime.now(zone);
+	    ZonedDateTime end = endDT.atZone(zone);
+
+	    Duration d = Duration.between(now, end);
+
+	    if (d.isZero() || d.isNegative()) {
+	        return "Closed";
+	    }
+
+	    long totalMinutes = d.toMinutes();
+
+	    long days = totalMinutes / (24 * 60);
+	    long rem = totalMinutes % (24 * 60);
+
+	    long hours = rem / 60;
+	    long minutes = rem % 60;
+
+	    // Example: "15 days 7 hours 16 minutes"
+	    String timePart =  days + " days " + hours + " hours " + minutes + " minutes";
+	    return timePart + " remaining before close";
+	}
+	
 	private static class HeaderData {
-		String window;  // 1st ,2nd , 3rd ...
-		String yearText;
-		String menuTitle;
-		LocalDate start;
-		LocalDate end;
+	    String window;  // 1st ,2nd , 3rd ...
+	    String yearText;
+	    String menuTitle;
+
+	    LocalDateTime startDT;
+	    LocalDateTime endDT;
 	}
 
+	
 	private static HeaderData fetchHeaderData() {
-		HeaderData h = new HeaderData();
-		final String sql =
-				"SELECT y.description AS year_desc, "
-						+ "       oa.zz_menu_title, "
-						+ "       oa.startdate::date AS start_date, "
-						+ "       oa.enddate::date   AS end_date ,"
-						+ "       oa.ZZ_Window "
-						+ "FROM adempiere.zz_open_application oa "
-						+ "JOIN adempiere.c_year y ON y.c_year_id = oa.c_year_id "
-						+ "WHERE oa.isactive = 'Y' "
-						+ "  AND oa.zz_docstatus = 'AP' "
-						+ "  AND now() BETWEEN oa.startdate AND oa.enddate "
-						+ "ORDER BY oa.startdate DESC "
-						+ "LIMIT 1";
-		try (PreparedStatement ps = DB.prepareStatement(sql, null);
-				ResultSet rs = ps.executeQuery()) {
-			if (rs.next()) {
-				h.yearText  = rs.getString("year_desc");
-				h.menuTitle = rs.getString("zz_menu_title");
-				java.sql.Date sd = rs.getDate("start_date");
-				java.sql.Date ed = rs.getDate("end_date");
-				if (sd != null) h.start = sd.toLocalDate();
-				if (ed != null) h.end   = ed.toLocalDate();
-				h.window = rs.getString("ZZ_Window");
-			}
-		} catch (Exception e) {
-			log.warning("Failed to load header data: " + e.getMessage());
-		}
-		return h;
+	    HeaderData h = new HeaderData();
+
+	    final String sql =
+	        "SELECT y.description AS year_desc, " +
+	        "       oa.zz_menu_title, " +
+	        "       oa.startdate     AS start_ts, " +
+	        "       oa.enddate       AS end_ts, " +
+	        "       oa.zz_window     AS zz_window " +
+	        "FROM adempiere.zz_open_application oa " +
+	        "JOIN adempiere.c_year y ON y.c_year_id = oa.c_year_id " +
+	        "WHERE oa.isactive = 'Y' " +
+	        "  AND oa.zz_docstatus = 'AP' " +
+	        "  AND now() BETWEEN oa.startdate AND oa.enddate " +
+	        "ORDER BY oa.startdate DESC " +
+	        "LIMIT 1";
+
+	    try (PreparedStatement ps = DB.prepareStatement(sql, null);
+	         ResultSet rs = ps.executeQuery()) {
+
+	        if (rs.next()) {
+	            h.yearText  = rs.getString("year_desc");
+	            h.menuTitle = rs.getString("zz_menu_title");
+	            h.window    = rs.getString("zz_window");
+
+	            java.sql.Timestamp st = rs.getTimestamp("start_ts");
+	            java.sql.Timestamp et = rs.getTimestamp("end_ts");
+
+	            if (st != null) h.startDT = st.toLocalDateTime();
+	            if (et != null) h.endDT   = et.toLocalDateTime();
+	        }
+	    } catch (Exception e) {
+	        log.warning("Failed to load header data: " + e.getMessage());
+	    }
+	    return h;
 	}
 
 	// ============================================================
