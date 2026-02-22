@@ -424,13 +424,13 @@ public class LoginPanel extends Window implements EventListener<Event>
 	            tr = new Tr();
 	            table.appendChild(tr);
 	        }
-	        /*
+	        
 	        td = new Td();
 	        td.setSclass(ITheme.LOGIN_FIELD_CLASS);
 	        tr.appendChild(td);
 	        td.appendChild(btnRegisterSdf);
 	        btnRegisterSdf.addEventListener(Events.ON_CLICK, this);
-	        */
+	        
 	    }
 
 	    // ===== Terms & Conditions (Accept + link) =====
