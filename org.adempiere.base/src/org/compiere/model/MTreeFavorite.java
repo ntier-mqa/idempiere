@@ -9,6 +9,7 @@
 
 package org.compiere.model;
 
+import java.awt.Color;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -37,9 +38,28 @@ public class MTreeFavorite extends X_AD_Tree_Favorite
 
 	public static final String				SQL_GET_TREE_FAVORITE_ID	= "SELECT AD_Tree_Favorite_ID FROM AD_Tree_Favorite	WHERE IsActive='Y' AND AD_User_ID=?";
 
-	public static final String				SQL_GET_TREE_FAVORITE_NODE	= "SELECT AD_Tree_Favorite_Node_ID, Parent_ID, SeqNo, Name, IsSummary, AD_Menu_ID, IsCollapsible, IsFavourite "
-																			+ " FROM AD_Tree_Favorite_Node WHERE IsActive='Y' AND AD_Tree_Favorite_ID=? AND AD_Client_ID IN (0,?) "
-																			+ " ORDER BY COALESCE(Parent_ID, -1), SeqNo, Name ";
+	public static final String				SQL_GET_TREE_FAVORITE_NODE	= """
+																			SELECT 
+																				AD_Tree_Favorite_Node_ID, Parent_ID, SeqNo, Name, IsSummary, AD_Menu_ID, IsCollapsible, IsFavourite,
+																				CASE 
+																				    WHEN AD_Tree_Favorite_ID=? THEN '1'
+																				    ELSE '2' 
+																				END AS src
+																			FROM 
+																				AD_Tree_Favorite_Node 
+																			WHERE 
+																				IsActive='Y' 
+																				AND AD_Client_ID IN (0,?)
+																				AND (AD_Tree_Favorite_ID=? 
+																					OR AD_Tree_Favorite_ID IN 
+																						(
+																							SELECT AD_Tree_Favorite_ID FROM AD_Tree_Favorite WHERE ad_role_id = ?
+																						)
+																				)
+																						
+																			ORDER BY 
+																				COALESCE(Parent_ID, -1), src, SeqNo, Name
+																			""";
 
 	/** Cache for AD_Tree_Favorite_ID */
 	private static CCache<Integer, Integer>	cache_TreeFavID				= new CCache<Integer, Integer>("AD_Tree_Favorite_ID", 30);
@@ -109,6 +129,8 @@ public class MTreeFavorite extends X_AD_Tree_Favorite
 			pstmt = DB.prepareStatement(SQL_GET_TREE_FAVORITE_NODE, get_TrxName());
 			pstmt.setInt(1, getAD_Tree_Favorite_ID());
 			pstmt.setInt(2, Env.getAD_Client_ID(Env.getCtx()));
+			pstmt.setInt(3, getAD_Tree_Favorite_ID());
+			pstmt.setInt(4, role.getAD_Role_ID());
 			rs = pstmt.executeQuery();
 			while (rs.next())
 			{
@@ -120,6 +142,7 @@ public class MTreeFavorite extends X_AD_Tree_Favorite
 				boolean isSummary = (rs.getString(5).equals("Y"));
 				boolean isCollapsible = rs.getString(7).equals("Y");
 				boolean isFavourite = rs.getString("IsFavourite").equals("Y");
+				boolean isFromRole = rs.getString("src").equals("2");
 
 				int menuID = 0;
 				String img = null;
@@ -139,7 +162,7 @@ public class MTreeFavorite extends X_AD_Tree_Favorite
 				}
 
 				if (access != null || isSummary)
-					addToTree(nodeID, parentID, seqNo, name, description, menuID, img, isSummary, isCollapsible, isFavourite);
+					addToTree(nodeID, parentID, seqNo, name, description, menuID, img, isSummary, isCollapsible, isFavourite, isFromRole);
 			}
 		}
 		catch (SQLException e)
@@ -170,10 +193,12 @@ public class MTreeFavorite extends X_AD_Tree_Favorite
 	 * @param isFavourite
 	 */
 	private void addToTree(	int favNodeID, int parentID, int seqNo, String name, String description, int menuID, String imgSrc, boolean isSummary, boolean isCollapsible,
-							boolean isFavourite)
+							boolean isFavourite, boolean isFromRole)
 	{
 		MTreeNode child = new MTreeNode(favNodeID, seqNo, name, description, parentID, menuID, imgSrc, isSummary, isCollapsible, isFavourite);
-
+		if(isFromRole) {
+			child.setColor(Color.blue);
+		}
 		MTreeNode parent = null;
 		if (root != null)
 			parent = root.findNode(parentID);

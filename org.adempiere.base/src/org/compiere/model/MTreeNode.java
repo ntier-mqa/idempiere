@@ -38,7 +38,7 @@ public class MTreeNode extends DefaultMutableTreeNode
 	/**
 	 * 
 	 */
-	private static final long serialVersionUID = -6871590404494812487L;
+	private static final long serialVersionUID = 9175896521955244079L;
 
 	/**
 	 *  Construct Model TreeNode
@@ -488,6 +488,10 @@ public class MTreeNode extends DefaultMutableTreeNode
 			return m_color;
 		return Color.black;
 	}	//	getColor
+	
+	public void setColor(Color color) {
+		m_color = color;
+	}
 	
 	/**	Last found ID				*/
 	private int                 m_lastID = -1;

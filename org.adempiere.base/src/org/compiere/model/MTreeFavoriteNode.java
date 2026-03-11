@@ -107,9 +107,9 @@ public class MTreeFavoriteNode extends X_AD_Tree_Favorite_Node
 	 * @return new {@link MTreeFavoriteNode} instance
 	 */
 	public static MTreeFavoriteNode create(	int AD_Client_ID, int AD_Org_ID, int AD_Tree_Favorite_ID, int AD_Menu_ID, int Parent_ID, int SeqNo,
-											String folderName, boolean isSummary, boolean isCollapsible, boolean isFavourite)
+											String folderName, boolean isSummary, boolean isCollapsible, boolean isFavourite, String trxName)
 	{
-		MTreeFavoriteNode favNode = (MTreeFavoriteNode) MTable.get(Env.getCtx(), MTreeFavoriteNode.Table_ID).getPO(0, null);
+		MTreeFavoriteNode favNode = (MTreeFavoriteNode) MTable.get(Env.getCtx(), MTreeFavoriteNode.Table_ID).getPO(0, trxName);
 		favNode.set_ValueOfColumn(I_AD_Tree_Favorite_Node.COLUMNNAME_AD_Client_ID, AD_Client_ID);
 		favNode.setAD_Org_ID(AD_Org_ID);
 		favNode.setAD_Tree_Favorite_ID(AD_Tree_Favorite_ID);
@@ -128,4 +128,11 @@ public class MTreeFavoriteNode extends X_AD_Tree_Favorite_Node
 
 		return favNode;
 	} // create
+	
+	public static MTreeFavoriteNode create(	int AD_Client_ID, int AD_Org_ID, int AD_Tree_Favorite_ID, int AD_Menu_ID, int Parent_ID, int SeqNo,
+			String folderName, boolean isSummary, boolean isCollapsible, boolean isFavourite) {
+		return create(AD_Client_ID, AD_Org_ID, AD_Tree_Favorite_ID, AD_Menu_ID, Parent_ID, SeqNo,
+				folderName, isSummary, isCollapsible, isFavourite, null);
+	}
+
 }

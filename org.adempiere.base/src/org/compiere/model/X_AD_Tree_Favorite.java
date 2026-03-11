@@ -30,7 +30,7 @@ public class X_AD_Tree_Favorite extends PO implements I_AD_Tree_Favorite, I_Pers
 	/**
 	 *
 	 */
-	private static final long serialVersionUID = 20241222L;
+	private static final long serialVersionUID = 20260309L;
 
     /** Standard Constructor */
     public X_AD_Tree_Favorite (Properties ctx, int AD_Tree_Favorite_ID, String trxName)
@@ -103,6 +103,34 @@ public class X_AD_Tree_Favorite extends PO implements I_AD_Tree_Favorite, I_Pers
         .append(get_ID()).append("]");
       return sb.toString();
     }
+
+	public org.compiere.model.I_AD_Role getAD_Role() throws RuntimeException
+	{
+		return (org.compiere.model.I_AD_Role)MTable.get(getCtx(), org.compiere.model.I_AD_Role.Table_ID)
+			.getPO(getAD_Role_ID(), get_TrxName());
+	}
+
+	/** Set Role.
+		@param AD_Role_ID Responsibility Role
+	*/
+	public void setAD_Role_ID (int AD_Role_ID)
+	{
+		if (AD_Role_ID < 0)
+			set_ValueNoCheck (COLUMNNAME_AD_Role_ID, null);
+		else
+			set_ValueNoCheck (COLUMNNAME_AD_Role_ID, Integer.valueOf(AD_Role_ID));
+	}
+
+	/** Get Role.
+		@return Responsibility Role
+	  */
+	public int getAD_Role_ID()
+	{
+		Integer ii = (Integer)get_Value(COLUMNNAME_AD_Role_ID);
+		if (ii == null)
+			 return 0;
+		return ii.intValue();
+	}
 
 	/** Set Favorite Tree.
 		@param AD_Tree_Favorite_ID Favorite Tree
