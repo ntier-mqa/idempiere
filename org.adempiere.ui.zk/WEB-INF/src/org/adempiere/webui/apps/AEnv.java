@@ -165,11 +165,6 @@ public final class AEnv
 		//  Nothing to Zoom to
 		if (AD_Window_ID == 0)
 			return;
-		// THis is for the case where we have a zoom condtion to a window with a different table.  In our case a view. By Martin
-		int newTableID = getTableIDForWindow(AD_Window_ID);  // Martin 27/02/2026
-		if (newTableID > 0 && newTableID != AD_Table_ID) {
-			AD_Table_ID = newTableID;
-		}
 		MTable table = MTable.get(Env.getCtx(), AD_Table_ID);
 		MQuery query = MQuery.getEqualQuery(table.getKeyColumns()[0], Record_ID);
 		query.setZoomTableName(table.getTableName());
@@ -177,16 +172,6 @@ public final class AEnv
 		query.setZoomValue(Record_ID);
 		zoom(AD_Window_ID, query);
 	}	//	zoom
-	
-	// Martin 27/02/2026
-	// THis is for the case where we have a zoom condtion to a window with a different table.  In our case a view.
-	private static int getTableIDForWindow(int adWindowId) {
-
-	    String sql = "SELECT AD_Table_ID FROM AD_Tab " +
-	                 "WHERE AD_Window_ID=? AND TabLevel=0 AND IsActive='Y'";
-
-	    return DB.getSQLValue(null, sql, adWindowId);
-	}
 
 	/**
 	 * 	Zoom to AD Window by AD_Table_ID and Record_UU.
