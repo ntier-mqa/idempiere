@@ -1284,6 +1284,11 @@ public abstract class AbstractProcessDialog extends Window implements IProcessUI
 		return m_WindowNo;
 	}
 	
+	public int getTabNo()
+	{
+		return m_TabNo;
+	}
+	
 	/**
 	 * @return AD_Process_ID
 	 */
