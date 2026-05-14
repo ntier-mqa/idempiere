@@ -42,7 +42,7 @@ public class SDFRegistrationWindow extends Window implements org.zkoss.zk.ui.eve
 
     // Mail templates (R_MailText.Name)
     private static final String OTP_MAIL_TEXT_NAME     = "REGISTRATION_OTP";
-    private static final String WELCOME_MAIL_TEXT_NAME = "REGISTRATION_WELCOME";
+    public static final String WELCOME_MAIL_TEXT_NAME = "REGISTRATION_WELCOME";
 
     // Configure for your instance
     private static final int DEFAULT_CLIENT_ID = 1000000; // <-- your AD_Client_ID
@@ -294,7 +294,7 @@ public class SDFRegistrationWindow extends Window implements org.zkoss.zk.ui.eve
             DB.executeUpdateEx("UPDATE AD_User SET ZZ_Passport_No=? WHERE AD_User_ID=?", new Object[]{passportNo, adUserId}, null);
     }
 
-    private boolean sendWithTemplate(String toEMail, String templateName, Map<String,String> ctxVars, MUser userOrNull) {
+    public static boolean sendWithTemplate(String toEMail, String templateName, Map<String,String> ctxVars, MUser userOrNull) {
         int clientId = userOrNull != null ? userOrNull.getAD_Client_ID() : Env.getAD_Client_ID(Env.getCtx());
         int mailTextId = DB.getSQLValue(null,
             "SELECT R_MailText_ID FROM R_MailText WHERE IsActive='Y' AND Name=? AND AD_Client_ID IN (?,0) ORDER BY AD_Client_ID",
@@ -377,7 +377,7 @@ public class SDFRegistrationWindow extends Window implements org.zkoss.zk.ui.eve
 
     private static String nvl(String s) { return s == null ? "" : s.trim(); }
 
-    private static String generatePassword(int len) {
+    public static String generatePassword(int len) {
         final String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789@#$%";
         StringBuilder sb = new StringBuilder(len);
         java.util.concurrent.ThreadLocalRandom r = java.util.concurrent.ThreadLocalRandom.current();
