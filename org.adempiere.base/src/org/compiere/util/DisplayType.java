@@ -1022,7 +1022,7 @@ public final class DisplayType
 			//	ID, CreatedBy/UpdatedBy, Acct
 			else if (columnName.endsWith("_ID")
 				|| columnName.endsWith("_ID_To")
-				|| columnName.endsWith("tedBy")
+				|| columnName.endsWith("edBy")
 				|| columnName.endsWith("_Acct") )
 				return getDatabase().getNumericDataType()+"(10)";
 			else if (fieldLength < 4)
