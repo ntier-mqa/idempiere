@@ -573,7 +573,8 @@ public class GridField
 			return true;
 		// BF [ 2910368 ]
 		// Record is not Active
-		if (!getGridTab().getTableModel().isImporting()) {// to import inactive record
+		boolean isImporting = getGridTab() != null && getGridTab().getTableModel().isImporting(); 
+		if (!isImporting) {// to import inactive record
 			if (checkContext && getGridTab() != null && !Env.getContext(ctx, m_vo.WindowNo,m_vo.TabNo, "IsActive").equals("Y"))
 				return false;
 		}
