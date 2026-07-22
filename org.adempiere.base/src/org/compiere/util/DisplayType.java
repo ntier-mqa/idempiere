@@ -1023,6 +1023,8 @@ public final class DisplayType
 			else if (columnName.endsWith("_ID")
 				|| columnName.endsWith("_ID_To")
 				|| columnName.endsWith("edBy")
+				|| columnName.equals("Approved_By")
+				|| columnName.equals("Namb_Confirmation_User")
 				|| columnName.endsWith("_Acct") )
 				return getDatabase().getNumericDataType()+"(10)";
 			else if (fieldLength < 4)
