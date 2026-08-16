@@ -307,6 +307,8 @@ public class MCost extends X_M_Cost implements ICostInfo
 			MCostElement ce = MCostElement.getMaterialCostElement(as, costingMethod);
 			materialCost = MCostQueue.getCosts(product, M_ASI_ID,
 				as, Org_ID, ce, qty, trxName);
+			if (materialCost == null)
+				materialCost = Env.ZERO;
 		}
 
 		//	Other Costs
@@ -355,9 +357,9 @@ public class MCost extends X_M_Cost implements ICostInfo
 		else if (MCostElement.COSTINGMETHOD_AveragePO.equals(costingMethod))
 			return null;
 		else if (MCostElement.COSTINGMETHOD_Fifo.equals(costingMethod))
-			return null;
+			;
 		else if (MCostElement.COSTINGMETHOD_Lifo.equals(costingMethod))
-			return null;
+			;
 		else if (MCostElement.COSTINGMETHOD_LastInvoice.equals(costingMethod))
 			retValue = getLastInvoicePrice(product, M_ASI_ID, Org_ID, as.getC_Currency_ID());
 		else if (MCostElement.COSTINGMETHOD_LastPOPrice.equals(costingMethod))
