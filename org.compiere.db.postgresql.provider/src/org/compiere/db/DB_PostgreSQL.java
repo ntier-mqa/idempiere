@@ -211,7 +211,7 @@ public class DB_PostgreSQL implements AdempiereDatabase
 			.append(connection.getDbHost())
 			.append(":").append(connection.getDbPort())
 			.append("/").append(connection.getDbName())
-			.append("?encoding=UNICODE&ApplicationName=iDempiere");
+			.append("?stringtype=unspecified&encoding=UNICODE&ApplicationName=iDempiere");
 
 		String urlParameters = SystemProperties.getPostgresqlURLParameters();
 	    if (!Util.isEmpty(urlParameters)) {
