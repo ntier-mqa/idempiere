@@ -275,15 +275,11 @@ public class GeneralRegistrationWindow extends Window implements org.zkoss.zk.ui
             throw new IllegalArgumentException(Msg.getMsg(Env.getCtx(), "FillEmailFirst"));
 
         boolean exists = isEmailRegistered(email);
-        if (exists) {
-            String msg = Msg.getMsg(Env.getCtx(), "EmailAlreadyRegistered");
-            if (msg == null || "EmailAlreadyRegistered".equals(msg)) {
-                msg = "This email is already registered. Please sign in or use Forgot Password.";
-            }
-            throw new IllegalArgumentException(msg);
-        }
-
-        /*
+        // Martin 2026-10-05: Restored dual-role support. Previously this unconditionally
+        // blocked registration with "email already registered" whenever the AD_User row
+        // existed, regardless of role - so a DG user could never also register as SDF
+        // (and vice versa). Re-enabled the existing-user path below (was commented out)
+        // so an existing user who doesn't yet hold the target role gets it assigned.
         if (exists) {
             // Existing user path: check if role already present
             int adUserId = getUserIdByEmail(email);
@@ -303,7 +299,6 @@ public class GeneralRegistrationWindow extends Window implements org.zkoss.zk.ui
             detach();
             return;
         }
-        */
 
         // New user -> OTP path
         if (name.isEmpty() || cellNo.isEmpty() || otp.isEmpty())
@@ -409,11 +404,11 @@ public class GeneralRegistrationWindow extends Window implements org.zkoss.zk.ui
     private boolean isCellValid() { return nvl(txtCellNo.getValue()).matches("\\d{10}"); }
     private boolean isEmailValid() {
         String email = nvl(txtEmail.getValue());
-        if (!email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")) {
-            return false;
-        }
-        // Treat already-registered emails as invalid for self-registration
-        return !isEmailRegistered(email);
+        // Martin 2026-10-05: No longer treating an already-registered email as invalid here.
+        // Dual-role registration (e.g. an existing DG user registering as SDF) needs the
+        // Register button enabled for a known email too - only format is checked now;
+        // the existing-user-vs-new-user branching happens in onRegister()/updateButtonsState().
+        return email.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     }
 
     private boolean isIdOrPassportValid() {
@@ -483,14 +478,10 @@ public class GeneralRegistrationWindow extends Window implements org.zkoss.zk.ui
             throw new WrongValueException(txtEmail, msg);
         }
 
-        // 2) Already registered?
-        if (isEmailRegistered(email)) {
-            String msg = Msg.getMsg(Env.getCtx(), "EmailAlreadyRegistered");
-            if (msg == null || "EmailAlreadyRegistered".equals(msg)) {
-                msg = "This email is already registered. Please sign in or use Forgot Password.";
-            }
-            throw new WrongValueException(txtEmail, msg);
-        }
+        // Martin 2026-10-05: Removed the "already registered" rejection that used to run here.
+        // It blocked dual-role registration (e.g. a DG user trying to also register as SDF)
+        // before the form could even be submitted. onRegister() now handles an already-
+        // registered email by assigning the additional role instead of rejecting it outright.
     }
 
     
