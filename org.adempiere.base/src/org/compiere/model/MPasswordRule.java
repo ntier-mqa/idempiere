@@ -54,6 +54,7 @@ import org.passay.dictionary.ArrayWordList;
 import org.passay.dictionary.WordListDictionary;
 import org.passay.dictionary.WordLists;
 import org.passay.dictionary.sort.ArraysSort;
+import org.passay.CharacterData;
 
 /**
  * @author juliana
@@ -66,6 +67,22 @@ public class MPasswordRule extends X_AD_PasswordRule {
 
 	private static final String passay_prefix = "PASSAY_";
 
+	private static final CharacterData SafeSpecialChars = new CharacterData() {
+        @Override
+        public String getErrorCode() {
+            // reuse Passay's default error code for special characters
+            return EnglishCharacterData.Special.getErrorCode();
+        }
+
+        @Override
+        public String getCharacters() {
+            // prevents its generated passwords from breaking poorly coded websites. 
+        	// Many older sites improperly parse these excluded symbols, mistaking them for HTML code or SQL database commands, 
+        	// which causes the login to fail or the password creation to be rejected
+            return "!@#$%^&*"; 
+        }
+    };
+    
     /**
      * UUID based Constructor
      * @param ctx  Context
@@ -161,7 +178,7 @@ public class MPasswordRule extends X_AD_PasswordRule {
 		if (getNonAlphaNumericCharacter() > 0) {
 			// require at least n non-alphanumeric char
 			numValidations++;
-			charRule.getRules().add(new CharacterRule(EnglishCharacterData.Special, getNonAlphaNumericCharacter()));
+			charRule.getRules().add(new CharacterRule(SafeSpecialChars, getNonAlphaNumericCharacter()));
 		}
 		if (getUppercaseCharacter() > 0) {
 			numValidations++;
@@ -317,7 +334,7 @@ public class MPasswordRule extends X_AD_PasswordRule {
 		if (getNonAlphaNumericCharacter() > 0) {
 			// require at least n non-alphanumeric char
 			numValidations++;
-			charRule.getRules().add(new CharacterRule(EnglishCharacterData.Special, getNonAlphaNumericCharacter()));
+			charRule.getRules().add(new CharacterRule(SafeSpecialChars, getNonAlphaNumericCharacter()));
 		}
 		if (getUppercaseCharacter() > 0) {
 			numValidations++;
