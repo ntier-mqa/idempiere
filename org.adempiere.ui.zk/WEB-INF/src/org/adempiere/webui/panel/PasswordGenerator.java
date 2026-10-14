@@ -3,13 +3,14 @@ package org.adempiere.webui.panel;
 import java.security.SecureRandom;
 import java.util.UUID;
 
+import org.compiere.model.MPasswordRule;
+
 public class PasswordGenerator {
     private static final String UPPER   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private static final String LOWER   = "abcdefghijklmnopqrstuvwxyz";
     private static final String DIGITS  = "0123456789";
     // Adjust this set to your policy if needed:
-    private static final String SPECIAL = "!@#$%^&*()-_=+[]{}|;:,.<>?/";
-    private static final String ALL     = UPPER + LOWER + DIGITS + SPECIAL;
+    private static final String ALL     = UPPER + LOWER + DIGITS + MPasswordRule.SPECIAL;
 
     private static final SecureRandom RNG = new SecureRandom();
 
@@ -20,7 +21,7 @@ public class PasswordGenerator {
         // Ensure required character classes
         sb.append(randomChar(UPPER));
         sb.append(randomChar(DIGITS));
-        sb.append(randomChar(SPECIAL));
+        sb.append(randomChar(MPasswordRule.SPECIAL));
 
         // Fill the rest from the full set
         for (int i = 3; i < length; i++) sb.append(randomChar(ALL));
