@@ -344,7 +344,7 @@ public class GeneralRegistrationWindow extends Window implements org.zkoss.zk.ui
         // Welcome mail
         Map<String,String> vars = new HashMap<>();
         vars.put("FullName", user.getName());
-        vars.put("TempPassword", user.getPassword());
+        vars.put("TempPassword", tempPwd);
         vars.put("EMail", user.getEMail());
         sendWithTemplate(user.getEMail(), WELCOME_MAIL_TEXT_NAME, vars, user);
 
@@ -547,4 +547,3 @@ public class GeneralRegistrationWindow extends Window implements org.zkoss.zk.ui
         return cnt > 0;
     }
 }
-

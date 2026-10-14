@@ -244,7 +244,8 @@ public class SDFRegistrationWindow extends Window implements org.zkoss.zk.ui.eve
         user.set_ValueNoCheck(MUser.COLUMNNAME_AD_Client_ID, DEFAULT_CLIENT_ID);
         user.set_ValueOfColumn("ZZ_ID_Passport_No", idNo);
         user.set_ValueOfColumn("ZZ_Passport_No",   passportNo);
-        user.setPassword(generatePassword(8));
+        String tempPwd = generatePassword(8);
+        user.setPassword(tempPwd);
         user.setIsExpired(true);
         user.saveEx();
 
@@ -259,7 +260,7 @@ public class SDFRegistrationWindow extends Window implements org.zkoss.zk.ui.eve
         // Welcome mail
         Map<String,String> vars = new HashMap<>();
         vars.put("FullName", user.getName());
-        vars.put("TempPassword", user.getPassword());
+        vars.put("TempPassword", tempPwd);
         vars.put("EMail", user.getEMail());
         sendWithTemplate(user.getEMail(), WELCOME_MAIL_TEXT_NAME, vars, user);
 
