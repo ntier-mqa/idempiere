@@ -67,6 +67,8 @@ public class MPasswordRule extends X_AD_PasswordRule {
 
 	private static final String passay_prefix = "PASSAY_";
 
+	public static final String SPECIAL = "!@#$%^&*()-_=+[]{}|;:,.<>?/";
+	
 	private static final CharacterData SafeSpecialChars = new CharacterData() {
         @Override
         public String getErrorCode() {
@@ -79,7 +81,7 @@ public class MPasswordRule extends X_AD_PasswordRule {
             // prevents its generated passwords from breaking poorly coded websites. 
         	// Many older sites improperly parse these excluded symbols, mistaking them for HTML code or SQL database commands, 
         	// which causes the login to fail or the password creation to be rejected
-            return "!@#$%^&*"; 
+            return SPECIAL; 
         }
     };
     
