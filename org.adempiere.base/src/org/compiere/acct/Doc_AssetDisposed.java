@@ -31,6 +31,7 @@ import org.compiere.model.MAssetAcct;
 import org.compiere.model.MAssetChange;
 import org.compiere.model.MAssetDisposed;
 import org.compiere.model.MDocType;
+import org.compiere.model.X_A_Asset_Disposed;
 import org.compiere.util.Env;
 
 /**
@@ -71,6 +72,10 @@ public class Doc_AssetDisposed extends Doc
 		facts.add(fact);
 		MAssetChange ac = MAssetChange.get(getCtx(), assetDisp.getA_Asset_ID(), MAssetChange.CHANGETYPE_Disposal,getTrxName(), as.getC_AcctSchema_ID());
 		//
+		if (X_A_Asset_Disposed.A_DISPOSED_METHOD_PartialRetirement.equals(assetDisp.getA_Disposed_Method())) {
+			// TODO: Prorated
+		}
+		
 		fact.createLine(null, getAccount(MAssetAcct.COLUMNNAME_A_Asset_Acct, as)
 				, ac.getC_AcctSchema().getC_Currency_ID()
 				, Env.ZERO, ac.getAssetValueAmt());

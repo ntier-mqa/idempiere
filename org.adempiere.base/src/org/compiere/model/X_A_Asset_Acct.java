@@ -34,7 +34,7 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 	/**
 	 *
 	 */
-	private static final long serialVersionUID = 20241222L;
+	private static final long serialVersionUID = 20261026L;
 
     /** Standard Constructor */
     public X_A_Asset_Acct (Properties ctx, int A_Asset_Acct_ID, String trxName)
@@ -58,6 +58,8 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
+			setZZDisposedProrated (false);
+// N
         } */
     }
 
@@ -83,6 +85,8 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
+			setZZDisposedProrated (false);
+// N
         } */
     }
 
@@ -108,6 +112,8 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
+			setZZDisposedProrated (false);
+// N
         } */
     }
 
@@ -133,6 +139,8 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
+			setZZDisposedProrated (false);
+// N
         } */
     }
 
@@ -954,5 +962,28 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 	public Timestamp getValidFrom()
 	{
 		return (Timestamp)get_Value(COLUMNNAME_ValidFrom);
+	}
+
+	/** Set Disposed Prorated.
+		@param ZZDisposedProrated A asset or asset group can be disposed prorated
+	*/
+	public void setZZDisposedProrated (boolean ZZDisposedProrated)
+	{
+		set_Value (COLUMNNAME_ZZDisposedProrated, Boolean.valueOf(ZZDisposedProrated));
+	}
+
+	/** Get Disposed Prorated.
+		@return A asset or asset group can be disposed prorated
+	  */
+	public boolean isZZDisposedProrated()
+	{
+		Object oo = get_Value(COLUMNNAME_ZZDisposedProrated);
+		if (oo != null)
+		{
+			 if (oo instanceof Boolean)
+				 return ((Boolean)oo).booleanValue();
+			return "Y".equals(oo);
+		}
+		return false;
 	}
 }

@@ -293,8 +293,9 @@ implements DocAction
 			else if (A_DISPOSED_METHOD_PartialRetirement.equals(method))
 			{
 				createDisposal();
-			}
-			else
+			}else if (A_DISPOSED_METHOD_Prorated.equals(method)) {
+				// TODO: Prorated
+			}else
 			{
 				throw new AssetNotSupportedException(COLUMNNAME_A_Disposed_Method, method);
 			}

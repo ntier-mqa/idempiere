@@ -34,7 +34,7 @@ public class X_A_Asset_Disposed extends PO implements I_A_Asset_Disposed, I_Pers
 	/**
 	 *
 	 */
-	private static final long serialVersionUID = 20241222L;
+	private static final long serialVersionUID = 20261026L;
 
     /** Standard Constructor */
     public X_A_Asset_Disposed (Properties ctx, int A_Asset_Disposed_ID, String trxName)
@@ -464,6 +464,8 @@ public class X_A_Asset_Disposed extends PO implements I_A_Asset_Disposed, I_Pers
 	public static final String A_DISPOSED_METHOD_Trade = "T1";
 	/** Trade w/cash = T2 */
 	public static final String A_DISPOSED_METHOD_TradeWCash = "T2";
+	/** Prorated = ZZProrated */
+	public static final String A_DISPOSED_METHOD_Prorated = "ZZProrated";
 	/** Set Disposed Method.
 		@param A_Disposed_Method Disposed Method
 	*/

@@ -52,12 +52,12 @@ public interface I_A_Asset_Group_Acct
     /** Column name AD_Org_ID */
     public static final String COLUMNNAME_AD_Org_ID = "AD_Org_ID";
 
-	/** Set Organization.
+	/** Set Unit.
 	  * Organizational entity within tenant
 	  */
 	public void setAD_Org_ID (int AD_Org_ID);
 
-	/** Get Organization.
+	/** Get Unit.
 	  * Organizational entity within tenant
 	  */
 	public int getAD_Org_ID();
@@ -472,4 +472,17 @@ public interface I_A_Asset_Group_Acct
 
 	/** Get Use Life - Years (fiscal)	  */
 	public BigDecimal getUseLifeYears_F();
+
+    /** Column name ZZDisposedProrated */
+    public static final String COLUMNNAME_ZZDisposedProrated = "ZZDisposedProrated";
+
+	/** Set Disposed Prorated.
+	  * A asset or asset group can be disposed prorated
+	  */
+	public void setZZDisposedProrated (boolean ZZDisposedProrated);
+
+	/** Get Disposed Prorated.
+	  * A asset or asset group can be disposed prorated
+	  */
+	public boolean isZZDisposedProrated();
 }
