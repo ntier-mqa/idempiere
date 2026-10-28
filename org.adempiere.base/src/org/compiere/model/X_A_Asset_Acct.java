@@ -34,7 +34,7 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 	/**
 	 *
 	 */
-	private static final long serialVersionUID = 20261026L;
+	private static final long serialVersionUID = 20261028L;
 
     /** Standard Constructor */
     public X_A_Asset_Acct (Properties ctx, int A_Asset_Acct_ID, String trxName)
@@ -58,8 +58,7 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
-			setZZDisposedProrated (false);
-// N
+			setZZDisposedProrated (null);
         } */
     }
 
@@ -85,8 +84,7 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
-			setZZDisposedProrated (false);
-// N
+			setZZDisposedProrated (null);
         } */
     }
 
@@ -112,8 +110,7 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
-			setZZDisposedProrated (false);
-// N
+			setZZDisposedProrated (null);
         } */
     }
 
@@ -139,8 +136,7 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 			setC_AcctSchema_ID (0);
 			setPostingType (null);
 // 'A'
-			setZZDisposedProrated (false);
-// N
+			setZZDisposedProrated (null);
         } */
     }
 
@@ -964,26 +960,50 @@ public class X_A_Asset_Acct extends PO implements I_A_Asset_Acct, I_Persistent
 		return (Timestamp)get_Value(COLUMNNAME_ValidFrom);
 	}
 
+	public I_C_ValidCombination getZZDisposalProratedAdj_A() throws RuntimeException
+	{
+		return (I_C_ValidCombination)MTable.get(getCtx(), I_C_ValidCombination.Table_ID)
+			.getPO(getZZDisposalProratedAdj_Acct(), get_TrxName());
+	}
+
+	/** Set Disposal Prorated Adj Acct.
+		@param ZZDisposalProratedAdj_Acct Disposal Prorated Adj Acct
+	*/
+	public void setZZDisposalProratedAdj_Acct (int ZZDisposalProratedAdj_Acct)
+	{
+		set_Value (COLUMNNAME_ZZDisposalProratedAdj_Acct, Integer.valueOf(ZZDisposalProratedAdj_Acct));
+	}
+
+	/** Get Disposal Prorated Adj Acct.
+		@return Disposal Prorated Adj Acct	  */
+	public int getZZDisposalProratedAdj_Acct()
+	{
+		Integer ii = (Integer)get_Value(COLUMNNAME_ZZDisposalProratedAdj_Acct);
+		if (ii == null)
+			 return 0;
+		return ii.intValue();
+	}
+
+	/** ZZDisposedProrated AD_Reference_ID=319 */
+	public static final int ZZDISPOSEDPRORATED_AD_Reference_ID=319;
+	/** No = N */
+	public static final String ZZDISPOSEDPRORATED_No = "N";
+	/** Yes = Y */
+	public static final String ZZDISPOSEDPRORATED_Yes = "Y";
 	/** Set Disposed Prorated.
 		@param ZZDisposedProrated A asset or asset group can be disposed prorated
 	*/
-	public void setZZDisposedProrated (boolean ZZDisposedProrated)
+	public void setZZDisposedProrated (String ZZDisposedProrated)
 	{
-		set_Value (COLUMNNAME_ZZDisposedProrated, Boolean.valueOf(ZZDisposedProrated));
+
+		set_Value (COLUMNNAME_ZZDisposedProrated, ZZDisposedProrated);
 	}
 
 	/** Get Disposed Prorated.
 		@return A asset or asset group can be disposed prorated
 	  */
-	public boolean isZZDisposedProrated()
+	public String getZZDisposedProrated()
 	{
-		Object oo = get_Value(COLUMNNAME_ZZDisposedProrated);
-		if (oo != null)
-		{
-			 if (oo instanceof Boolean)
-				 return ((Boolean)oo).booleanValue();
-			return "Y".equals(oo);
-		}
-		return false;
+		return (String)get_Value(COLUMNNAME_ZZDisposedProrated);
 	}
 }

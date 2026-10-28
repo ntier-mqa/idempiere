@@ -469,16 +469,27 @@ public interface I_A_Asset_Acct
 	  */
 	public Timestamp getValidFrom();
 
+    /** Column name ZZDisposalProratedAdj_Acct */
+    public static final String COLUMNNAME_ZZDisposalProratedAdj_Acct = "ZZDisposalProratedAdj_Acct";
+
+	/** Set Disposal Prorated Adj Acct	  */
+	public void setZZDisposalProratedAdj_Acct (int ZZDisposalProratedAdj_Acct);
+
+	/** Get Disposal Prorated Adj Acct	  */
+	public int getZZDisposalProratedAdj_Acct();
+
+	public I_C_ValidCombination getZZDisposalProratedAdj_A() throws RuntimeException;
+
     /** Column name ZZDisposedProrated */
     public static final String COLUMNNAME_ZZDisposedProrated = "ZZDisposedProrated";
 
 	/** Set Disposed Prorated.
 	  * A asset or asset group can be disposed prorated
 	  */
-	public void setZZDisposedProrated (boolean ZZDisposedProrated);
+	public void setZZDisposedProrated (String ZZDisposedProrated);
 
 	/** Get Disposed Prorated.
 	  * A asset or asset group can be disposed prorated
 	  */
-	public boolean isZZDisposedProrated();
+	public String getZZDisposedProrated();
 }
