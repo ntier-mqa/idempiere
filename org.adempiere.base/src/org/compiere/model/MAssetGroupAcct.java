@@ -208,5 +208,14 @@ public class MAssetGroupAcct extends X_A_Asset_Group_Acct
 					.setParameters(new Object[]{A_Asset_Group_ID, postingType, C_AcctSchema_ID})
 					.firstOnly();
 	}
+
+	/**
+	 * Check if asset group is configured for prorated disposal.
+	 * @return true if 'Y', false if 'N' or null
+	 */
+	public boolean isZZDisposedProrated()
+	{
+		return ZZDISPOSEDPRORATED_Yes.equals(getZZDisposedProrated());
+	}
 	
 }	//	MAssetGroupAcct

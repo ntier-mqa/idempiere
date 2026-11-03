@@ -23,16 +23,25 @@ package org.compiere.model;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.math.RoundingMode;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
 
 import org.compiere.process.DocAction;
 import org.compiere.process.DocumentEngine;
+import org.compiere.util.DB;
 import org.compiere.util.Env;
 import org.compiere.util.Util;
+import org.adempiere.exceptions.AdempiereException;
 import org.idempiere.fa.exceptions.AssetAlreadyDepreciatedException;
 import org.idempiere.fa.exceptions.AssetNotImplementedException;
 import org.idempiere.fa.exceptions.AssetNotSupportedException;
@@ -148,7 +157,7 @@ implements DocAction
 	 */
 	public MAsset getAsset()
 	{
-		return MAsset.get(getCtx(), getA_Asset_ID(), null);
+		return MAsset.get(getCtx(), getA_Asset_ID(), get_TrxName());
 	}
 	
 	@Override
@@ -197,11 +206,24 @@ implements DocAction
 		
 		// Check that the FA is not just depreciated
 		MDepreciationWorkfile assetwk = MDepreciationWorkfile.get(getCtx(), getA_Asset_ID(), getPostingType(), get_TrxName());
-		if (assetwk.isDepreciated(getDateAcct()))
+		if (!A_DISPOSED_METHOD_Prorated.equals(getA_Disposed_Method()))
 		{
-			throw new AssetAlreadyDepreciatedException();
+			if (assetwk.isDepreciated(getDateAcct()))
+			{
+				throw new AssetAlreadyDepreciatedException();
+			}
+			MDepreciationExp.checkExistsNotProcessedEntries(getCtx(), getA_Asset_ID(), getDateAcct(), getPostingType(), get_TrxName());
 		}
-		MDepreciationExp.checkExistsNotProcessedEntries(getCtx(), getA_Asset_ID(), getDateAcct(), getPostingType(), get_TrxName());
+		else
+		{
+			checkDisposedProratedAllowed();
+			BigDecimal requiredDepr = calculateProratedCumulativeDepreciation(assetwk, getA_Disposed_Date());
+			BigDecimal currentDepr = assetwk.getA_Accumulated_Depr() != null ? assetwk.getA_Accumulated_Depr() : Env.ZERO;
+			if (requiredDepr.compareTo(currentDepr) != 0)
+			{
+				checkDepreciationAdjustmentAccount();
+			}
+		}
 		
 		m_processMsg = ModelValidationEngine.get().fireDocValidate(this, ModelValidator.TIMING_AFTER_PREPARE);
 		if (m_processMsg != null)
@@ -293,9 +315,24 @@ implements DocAction
 			else if (A_DISPOSED_METHOD_PartialRetirement.equals(method))
 			{
 				createDisposal();
-			}else if (A_DISPOSED_METHOD_Prorated.equals(method)) {
-				// TODO: Prorated
-			}else
+			}
+			else if (A_DISPOSED_METHOD_Prorated.equals(method))
+			{
+				checkDisposedProratedAllowed();
+				asset.changeStatus(MAsset.A_ASSET_STATUS_Disposed, null);
+				setA_Disposal_Amt(getA_Asset_Cost());
+				MDepreciationWorkfile assetwk = MDepreciationWorkfile.get(getCtx(), getA_Asset_ID(), getPostingType(), get_TrxName());
+				BigDecimal requiredDepr = calculateProratedCumulativeDepreciation(assetwk, getA_Disposed_Date());
+				BigDecimal currentDepr = assetwk.getA_Accumulated_Depr() != null ? assetwk.getA_Accumulated_Depr() : Env.ZERO;
+				if (requiredDepr.compareTo(currentDepr) != 0)
+				{
+					checkDepreciationAdjustmentAccount();
+				}
+				setA_Accumulated_Depr_Delta(requiredDepr);
+				setExpense(getA_Disposal_Amt().subtract(requiredDepr));
+				createDisposal();
+			}
+			else
 			{
 				throw new AssetNotSupportedException(COLUMNNAME_A_Disposed_Method, method);
 			}
@@ -415,7 +452,8 @@ implements DocAction
 				}
 		);
 		
-		MDepreciationWorkfile wk = MDepreciationWorkfile.get(Env.getCtx(), asset_id, bean.getPostingType(), null);
+		String trxName = (bean instanceof PO) ? ((PO) bean).get_TrxName() : null;
+		MDepreciationWorkfile wk = MDepreciationWorkfile.get(Env.getCtx(), asset_id, bean.getPostingType(), trxName);
 		if (wk != null)
 		{
 			bean.setA_Asset_Cost(wk.getA_Asset_Cost());
@@ -477,18 +515,35 @@ implements DocAction
 	 */
 	private void createDisposal()
 	{
+		Map<Integer, BigDecimal> origCostMap = new HashMap<>();
+		Map<Integer, BigDecimal> origSalvageMap = new HashMap<>();
+		Map<Integer, BigDecimal> origAccumDeprMap = new HashMap<>();
 		for (MDepreciationWorkfile assetwk :  MDepreciationWorkfile.forA_Asset_ID(getCtx(), getA_Asset_ID(), get_TrxName()))
 		{
+			origCostMap.put(assetwk.getC_AcctSchema_ID(), assetwk.getA_Asset_Cost());
+			origSalvageMap.put(assetwk.getC_AcctSchema_ID(), assetwk.getA_Salvage_Value() != null ? assetwk.getA_Salvage_Value() : Env.ZERO);
+			origAccumDeprMap.put(assetwk.getC_AcctSchema_ID(), assetwk.getA_Accumulated_Depr() != null ? assetwk.getA_Accumulated_Depr() : Env.ZERO);
+			
 			BigDecimal disposalAmt = Env.ZERO;
 			BigDecimal accumDeprAmt = Env.ZERO;
-			if (assetwk.getC_AcctSchema().getC_Currency_ID() != getC_Currency_ID()) 
+			BigDecimal bookValueAmt = Env.ZERO;
+			if (A_DISPOSED_METHOD_Prorated.equals(getA_Disposed_Method()))
+			{
+				disposalAmt = assetwk.getA_Asset_Cost();
+				accumDeprAmt = calculateProratedCumulativeDepreciation(assetwk, getA_Disposed_Date());
+				bookValueAmt = disposalAmt.subtract(accumDeprAmt);
+			}
+			else if (assetwk.getC_AcctSchema().getC_Currency_ID() != getC_Currency_ID()) 
 			{
 				disposalAmt  =  assetwk.getA_Asset_Cost();
 				accumDeprAmt = assetwk.getA_Accumulated_Depr();
-			} else
+				bookValueAmt = assetwk.getA_Asset_Remaining();
+			} 
+			else
 			{
 				disposalAmt = getA_Disposal_Amt();
 				accumDeprAmt = getA_Accumulated_Depr_Delta();
+				bookValueAmt = assetwk.getA_Asset_Remaining();
 			}			
 			
 			MAssetChange change = new MAssetChange (getCtx(), 0, get_TrxName());
@@ -498,7 +553,7 @@ implements DocAction
 			change.setTextDetails(MRefList.getListDescription (getCtx(),"A_Update_Type" , MAssetChange.CHANGETYPE_Disposal));
 			change.setPostingType(assetwk.getPostingType());
 			change.setAssetValueAmt(disposalAmt);
-			change.setAssetBookValueAmt(assetwk.getA_Asset_Remaining());
+			change.setAssetBookValueAmt(bookValueAmt);
 			change.setAssetAccumDepreciationAmt(accumDeprAmt);
 			change.setA_QTY_Current(assetwk.getA_QTY_Current());
 			change.setC_AcctSchema_ID(assetwk.getC_AcctSchema_ID());
@@ -507,16 +562,692 @@ implements DocAction
 			change.saveEx(get_TrxName());
 			
 			assetwk.adjustCost(disposalAmt.negate(), Env.ZERO, false);
-			assetwk.adjustAccumulatedDepr(accumDeprAmt.negate(), assetwk.getA_Accumulated_Depr_F().negate(), false);
+			BigDecimal deltaAccumDepr = A_DISPOSED_METHOD_Prorated.equals(getA_Disposed_Method())
+					? assetwk.getA_Accumulated_Depr().negate()
+					: accumDeprAmt.negate();
+			assetwk.adjustAccumulatedDepr(deltaAccumDepr, assetwk.getA_Accumulated_Depr_F().negate(), false);
 			assetwk.saveEx();
 			assetwk.buildDepreciation();
 		}
 		//
 		// Delete not processed expense entries
 		List<MDepreciationExp> list = MDepreciationExp.getNotProcessedEntries(getCtx(), getA_Asset_ID(), getPostingType(), get_TrxName());
-		for (MDepreciationExp ex : list)
+		if (A_DISPOSED_METHOD_Prorated.equals(getA_Disposed_Method()))
 		{
-			ex.deleteEx(false);
-		}	
+			Timestamp disposedDate = getA_Disposed_Date();
+			if (disposedDate == null)
+			{
+				disposedDate = getDateAcct();
+			}
+			if (disposedDate == null)
+			{
+				disposedDate = new Timestamp(System.currentTimeMillis());
+			}
+			LocalDate disposalLocalDate = disposedDate.toLocalDateTime().toLocalDate();
+			
+			// Determine accounting period of DateAcct to detect Forward Calculation
+			Timestamp acctDate = getDateAcct();
+			if (acctDate == null)
+			{
+				acctDate = Env.getContextAsDate(getCtx(), "#Date");
+			}
+			if (acctDate == null)
+			{
+				acctDate = new Timestamp(System.currentTimeMillis());
+			}
+			LocalDate acctLocalDate = acctDate.toLocalDateTime().toLocalDate();
+			LocalDate acctPeriodEnd = acctLocalDate.with(TemporalAdjusters.lastDayOfMonth());
+			MPeriod acctPeriod = MPeriod.get(getCtx(), acctDate, getAD_Org_ID(), get_TrxName());
+			if (acctPeriod != null && acctPeriod.getEndDate() != null)
+			{
+				acctPeriodEnd = acctPeriod.getEndDate().toLocalDateTime().toLocalDate();
+			}
+			
+			boolean isForward = disposalLocalDate.isAfter(acctPeriodEnd);
+			
+			// Determine period of A_Disposed_Date
+			LocalDate disposalPeriodStart = disposalLocalDate.with(TemporalAdjusters.firstDayOfMonth());
+			LocalDate disposalPeriodEnd = disposalLocalDate.with(TemporalAdjusters.lastDayOfMonth());
+			MPeriod disposalPeriod = MPeriod.get(getCtx(), disposedDate, getAD_Org_ID(), get_TrxName());
+			if (disposalPeriod != null && disposalPeriod.getStartDate() != null && disposalPeriod.getEndDate() != null)
+			{
+				disposalPeriodStart = disposalPeriod.getStartDate().toLocalDateTime().toLocalDate();
+				disposalPeriodEnd = disposalPeriod.getEndDate().toLocalDateTime().toLocalDate();
+			}
+			
+			for (MDepreciationExp ex : list)
+			{
+				Timestamp exDate = ex.getDateAcct();
+				if (exDate == null)
+				{
+					ex.deleteEx(false);
+					continue;
+				}
+				LocalDate exLocalDate = exDate.toLocalDateTime().toLocalDate();
+				boolean isInDisposalPeriod = !exLocalDate.isBefore(disposalPeriodStart) && !exLocalDate.isAfter(disposalPeriodEnd);
+				
+				if (isForward && isInDisposalPeriod)
+				{
+					// Adjust value and end date of MDepreciationExp in the same period as A_Disposed_Date
+					// Formula: nguyên giá trước dispose - salvage (slave) - Disposed (accumulated depreciation)
+					BigDecimal origCost = origCostMap.get(ex.getC_AcctSchema_ID());
+					if (origCost == null)
+					{
+						origCost = ex.getA_Asset_Cost() != null ? ex.getA_Asset_Cost() : Env.ZERO;
+					}
+					BigDecimal salvage = origSalvageMap.get(ex.getC_AcctSchema_ID());
+					if (salvage == null)
+					{
+						salvage = Env.ZERO;
+					}
+					BigDecimal disposed = origAccumDeprMap.get(ex.getC_AcctSchema_ID());
+					if (disposed == null)
+					{
+						disposed = ex.getA_Accumulated_Depr() != null ? ex.getA_Accumulated_Depr() : Env.ZERO;
+					}
+					
+					// Add any intermediate unposted depreciation expenses before the disposal period
+					for (MDepreciationExp priorEx : list)
+					{
+						if (priorEx.getC_AcctSchema_ID() == ex.getC_AcctSchema_ID() 
+								&& priorEx.getA_Depreciation_Exp_ID() != ex.getA_Depreciation_Exp_ID())
+						{
+							Timestamp pDate = priorEx.getDateAcct();
+							if (pDate != null && pDate.toLocalDateTime().toLocalDate().isBefore(disposalPeriodStart))
+							{
+								if (priorEx.getExpense() != null && priorEx.getExpense().signum() > 0)
+								{
+									disposed = disposed.add(priorEx.getExpense());
+								}
+							}
+						}
+					}
+					
+					BigDecimal newExpense = origCost.subtract(salvage).subtract(disposed);
+					if (newExpense.signum() < 0)
+					{
+						newExpense = Env.ZERO;
+					}
+					
+					MAcctSchema as = MAcctSchema.get(getCtx(), ex.getC_AcctSchema_ID());
+					if (as != null)
+					{
+						newExpense = newExpense.setScale(as.getStdPrecision(), RoundingMode.HALF_UP);
+					}
+					
+					ex.setExpense(newExpense);
+					ex.setA_Accumulated_Depr(disposed.add(newExpense));
+					ex.setDateAcct(disposedDate);
+					ex.saveEx(get_TrxName());
+				}
+				else if (exLocalDate.isAfter(disposalLocalDate) || exLocalDate.isAfter(disposalPeriodEnd) || (!isForward && isInDisposalPeriod))
+				{
+					// Delete expense entries after A_Disposed_Date
+					ex.deleteEx(false);
+				}
+			}
+		}
+		else
+		{
+			for (MDepreciationExp ex : list)
+			{
+				ex.deleteEx(false);
+			}
+		}
+	}
+
+	/**
+	 * Rate information container for daily and monthly depreciation rates.
+	 */
+	private static class RateInfo
+	{
+		final BigDecimal dailyRate;
+		final BigDecimal monthlyRate;
+
+		RateInfo(BigDecimal dailyRate, BigDecimal monthlyRate)
+		{
+			this.dailyRate = dailyRate;
+			this.monthlyRate = monthlyRate;
+		}
+	}
+
+	/**
+	 * Calculate prorated cumulative depreciation up to effective disposal date by days.
+	 * 
+	 * Uses ZZ_DailyRate / ZZMonthlyRate to calculate exact daily depreciation.
+	 * 
+	 * Disposal classification relative to the accounting period of DateAcct (acctDate):
+	 * - Normal Disposal: A_Disposed_Date is between acct period start and end date.
+	 * - Backward Calculation: A_Disposed_Date is before acct period start.
+	 * - Forward Calculation: A_Disposed_Date is after acct period end.
+	 * 
+	 * @param assetwk depreciation workfile
+	 * @param effectiveDisposalDate effective disposal date (A_Disposed_Date)
+	 * @return required cumulative depreciation up to disposal date
+	 */
+	public BigDecimal calculateProratedCumulativeDepreciation(MDepreciationWorkfile assetwk, Timestamp effectiveDisposalDate)
+	{
+		if (effectiveDisposalDate == null)
+		{
+			effectiveDisposalDate = getDateAcct();
+		}
+		if (effectiveDisposalDate == null)
+		{
+			effectiveDisposalDate = new Timestamp(System.currentTimeMillis());
+		}
+		
+		LocalDate disposalDate = effectiveDisposalDate.toLocalDateTime().toLocalDate();
+		
+		BigDecimal currentPostedDepr = assetwk.getA_Accumulated_Depr();
+		if (currentPostedDepr == null)
+		{
+			currentPostedDepr = Env.ZERO;
+		}
+		
+		int scale = 2;
+		MAcctSchema as = MAcctSchema.get(getCtx(), assetwk.getC_AcctSchema_ID());
+		if (as != null)
+		{
+			scale = as.getStdPrecision();
+		}
+		
+		// Determine accounting period based on DateAcct (acctDate)
+		Timestamp acctDate = getDateAcct();
+		if (acctDate == null)
+		{
+			acctDate = Env.getContextAsDate(getCtx(), "#Date");
+		}
+		if (acctDate == null)
+		{
+			acctDate = new Timestamp(System.currentTimeMillis());
+		}
+		
+		LocalDate acctLocalDate = acctDate.toLocalDateTime().toLocalDate();
+		LocalDate acctPeriodStart = acctLocalDate.with(TemporalAdjusters.firstDayOfMonth());
+		LocalDate acctPeriodEnd = acctLocalDate.with(TemporalAdjusters.lastDayOfMonth());
+		
+		MPeriod acctPeriod = MPeriod.get(getCtx(), acctDate, getAD_Org_ID(), get_TrxName());
+		if (acctPeriod != null && acctPeriod.getStartDate() != null && acctPeriod.getEndDate() != null)
+		{
+			acctPeriodStart = acctPeriod.getStartDate().toLocalDateTime().toLocalDate();
+			acctPeriodEnd = acctPeriod.getEndDate().toLocalDateTime().toLocalDate();
+		}
+		
+		if (log.isLoggable(Level.FINE))
+		{
+			if (disposalDate.isBefore(acctPeriodStart))
+			{
+				log.fine("Prorated Disposal: Backward calculation (disposalDate " + disposalDate + " < acctPeriodStart " + acctPeriodStart + ", acctDate=" + acctLocalDate + ")");
+			}
+			else if (disposalDate.isAfter(acctPeriodEnd))
+			{
+				log.fine("Prorated Disposal: Forward calculation (disposalDate " + disposalDate + " > acctPeriodEnd " + acctPeriodEnd + ", acctDate=" + acctLocalDate + ")");
+			}
+			else
+			{
+				log.fine("Prorated Disposal: Normal calculation (disposalDate " + disposalDate + " in acct period [" + acctPeriodStart + ", " + acctPeriodEnd + "], acctDate=" + acctLocalDate + ")");
+			}
+		}
+		
+		MDepreciationExp lastExp = getLastProcessedDepreciationExp(getCtx(), assetwk.getA_Asset_ID(),
+				assetwk.getPostingType(), assetwk.getC_AcctSchema_ID(), get_TrxName());
+		
+		LocalDate lastPostedDate = null;
+		if (lastExp != null && lastExp.getDateAcct() != null)
+		{
+			lastPostedDate = lastExp.getDateAcct().toLocalDateTime().toLocalDate().with(TemporalAdjusters.lastDayOfMonth());
+		}
+		
+		if (lastPostedDate != null && !disposalDate.isAfter(lastPostedDate))
+		{
+			// Depreciation has been posted up to or beyond disposalDate -> Reverse excess
+			return calculateBackwardDailyDepreciation(assetwk, disposalDate, currentPostedDepr, scale);
+		}
+		else
+		{
+			// Depreciation has NOT reached disposalDate -> Calculate forward / outstanding
+			return calculateForwardDailyDepreciation(assetwk, lastExp, lastPostedDate, disposalDate, currentPostedDepr, scale);
+		}
+	}
+
+	/**
+	 * Extract daily and monthly depreciation rate from A_Depreciation_Exp.
+	 * Checks ZZ_DailyRate, ZZMonthlyRate on exp (or any other entry for this asset),
+	 * then derives using averageDaysInMonth (365/12).
+	 * If rates cannot be queried, throws AdempiereException and stops processing.
+	 */
+	private RateInfo getDailyAndMonthlyRate(MDepreciationWorkfile assetwk, MDepreciationExp exp, int scale)
+	{
+		BigDecimal dailyRate = null;
+		BigDecimal monthlyRate = null;
+		
+		if (exp != null)
+		{
+			Object zzDailyRate = exp.get_Value("ZZ_DailyRate");
+			if (zzDailyRate instanceof BigDecimal && ((BigDecimal) zzDailyRate).signum() > 0)
+			{
+				dailyRate = (BigDecimal) zzDailyRate;
+			}
+			Object zzMonthlyRate = exp.get_Value("ZZMonthlyRate");
+			if (zzMonthlyRate instanceof BigDecimal && ((BigDecimal) zzMonthlyRate).signum() > 0)
+			{
+				monthlyRate = (BigDecimal) zzMonthlyRate;
+			}
+			if (monthlyRate == null && exp.getExpense() != null && exp.getExpense().signum() > 0)
+			{
+				monthlyRate = exp.getExpense();
+			}
+		}
+		
+		// If not found in exp, search across all A_Depreciation_Exp entries for this asset
+		if (dailyRate == null && monthlyRate == null)
+		{
+			MDepreciationExp anyExp = getAnyDepreciationExpWithRates(assetwk);
+			if (anyExp != null)
+			{
+				Object zzDailyRate = anyExp.get_Value("ZZ_DailyRate");
+				if (zzDailyRate instanceof BigDecimal && ((BigDecimal) zzDailyRate).signum() > 0)
+				{
+					dailyRate = (BigDecimal) zzDailyRate;
+				}
+				Object zzMonthlyRate = anyExp.get_Value("ZZMonthlyRate");
+				if (zzMonthlyRate instanceof BigDecimal && ((BigDecimal) zzMonthlyRate).signum() > 0)
+				{
+					monthlyRate = (BigDecimal) zzMonthlyRate;
+				}
+				if (monthlyRate == null && anyExp.getExpense() != null && anyExp.getExpense().signum() > 0)
+				{
+					monthlyRate = anyExp.getExpense();
+				}
+			}
+		}
+		
+		BigDecimal averageDaysInMonth = new BigDecimal("365").divide(new BigDecimal("12"), MathContext.DECIMAL128);
+		
+		if (dailyRate != null && monthlyRate == null)
+		{
+			monthlyRate = dailyRate.multiply(averageDaysInMonth).setScale(scale, RoundingMode.HALF_UP);
+		}
+		else if (monthlyRate != null && dailyRate == null)
+		{
+			dailyRate = monthlyRate.divide(averageDaysInMonth, MathContext.DECIMAL128);
+		}
+		
+		// If dailyRate or monthlyRate could not be queried, throw exception and stop processing
+		if (dailyRate == null || monthlyRate == null || dailyRate.signum() <= 0 || monthlyRate.signum() <= 0)
+		{
+			throw new AdempiereException("Cannot query dailyRate / monthlyRate (ZZ_DailyRate / ZZMonthlyRate) for asset (ID=" 
+					+ assetwk.getA_Asset_ID() + ", PostingType=" + assetwk.getPostingType() + "). Processing stopped.");
+		}
+		
+		return new RateInfo(dailyRate, monthlyRate);
+	}
+
+	/**
+	 * Search for any A_Depreciation_Exp entry with ZZ_DailyRate or ZZMonthlyRate for this asset
+	 */
+	private MDepreciationExp getAnyDepreciationExpWithRates(MDepreciationWorkfile assetwk)
+	{
+		String whereClause = MDepreciationExp.COLUMNNAME_A_Asset_ID + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_PostingType + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_C_AcctSchema_ID + " = ?"
+				+ " AND IsActive = 'Y'";
+		List<MDepreciationExp> list = new Query(getCtx(), MDepreciationExp.Table_Name, whereClause, get_TrxName())
+				.setParameters(assetwk.getA_Asset_ID(), assetwk.getPostingType(), assetwk.getC_AcctSchema_ID())
+				.setOrderBy(MDepreciationExp.COLUMNNAME_DateAcct + " DESC, " + MDepreciationExp.COLUMNNAME_A_Period + " DESC")
+				.list();
+		for (MDepreciationExp e : list)
+		{
+			Object val = e.get_Value("ZZ_DailyRate");
+			if (val instanceof BigDecimal && ((BigDecimal) val).signum() > 0)
+			{
+				return e;
+			}
+			val = e.get_Value("ZZMonthlyRate");
+			if (val instanceof BigDecimal && ((BigDecimal) val).signum() > 0)
+			{
+				return e;
+			}
+		}
+		// Fallback: search across all schemas for this asset
+		whereClause = MDepreciationExp.COLUMNNAME_A_Asset_ID + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_PostingType + " = ?"
+				+ " AND IsActive = 'Y'";
+		list = new Query(getCtx(), MDepreciationExp.Table_Name, whereClause, get_TrxName())
+				.setParameters(assetwk.getA_Asset_ID(), assetwk.getPostingType())
+				.setOrderBy(MDepreciationExp.COLUMNNAME_DateAcct + " DESC, " + MDepreciationExp.COLUMNNAME_A_Period + " DESC")
+				.list();
+		for (MDepreciationExp e : list)
+		{
+			Object val = e.get_Value("ZZ_DailyRate");
+			if (val instanceof BigDecimal && ((BigDecimal) val).signum() > 0)
+			{
+				return e;
+			}
+			val = e.get_Value("ZZMonthlyRate");
+			if (val instanceof BigDecimal && ((BigDecimal) val).signum() > 0)
+			{
+				return e;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Verify that prorated disposal is allowed for this asset.
+	 * Checks ZZDisposedProrated on MAssetAcct, then falls back to MAssetGroupAcct.
+	 * Allowed values: 'Y' (allowed), 'N' (disallowed), null (inherit from group).
+	 * If 'N', throws AdempiereException and stops processing.
+	 * If not 'Y', throws AdempiereException and stops processing.
+	 */
+	private void checkDisposedProratedAllowed()
+	{
+		for (MDepreciationWorkfile wk : MDepreciationWorkfile.forA_Asset_ID(getCtx(), getA_Asset_ID(), get_TrxName()))
+		{
+			MAssetAcct assetAcct = MAssetAcct.forA_Asset_ID(getCtx(), wk.getC_AcctSchema_ID(), getA_Asset_ID(), wk.getPostingType(), getDateAcct(), get_TrxName());
+			String prorated = null;
+			if (assetAcct != null)
+			{
+				prorated = assetAcct.getZZDisposedProrated();
+			}
+			if (prorated == null)
+			{
+				MAsset asset = getAsset();
+				if (asset != null && asset.getA_Asset_Group_ID() > 0)
+				{
+					MAssetGroupAcct grpAcct = MAssetGroupAcct.forA_Asset_Group_ID(getCtx(), asset.getA_Asset_Group_ID(), wk.getPostingType(), wk.getC_AcctSchema_ID());
+					if (grpAcct != null)
+					{
+						prorated = grpAcct.getZZDisposedProrated();
+					}
+				}
+			}
+			
+			if (X_A_Asset_Acct.ZZDISPOSEDPRORATED_No.equals(prorated))
+			{
+				throw new AdempiereException("Asset (ID=" + getA_Asset_ID() 
+						+ ", AcctSchema=" + wk.getC_AcctSchema_ID() 
+						+ ") is configured not to allow prorated disposal (ZZDisposedProrated='N'). Processing stopped.");
+			}
+			else if (!X_A_Asset_Acct.ZZDISPOSEDPRORATED_Yes.equals(prorated))
+			{
+				throw new AdempiereException("Asset (ID=" + getA_Asset_ID() 
+						+ ", AcctSchema=" + wk.getC_AcctSchema_ID() 
+						+ ") is not enabled for prorated disposal (ZZDisposedProrated is not 'Y'). Processing stopped.");
+			}
+		}
+	}
+
+	/**
+	 * Verify that ZZDisposalProratedAdj_Acct is defined for all accounting schemas of this asset.
+	 * Checks MAssetAcct, then falls back to MAssetGroupAcct.
+	 * If not defined, throws AdempiereException and stops processing.
+	 */
+	private void checkDepreciationAdjustmentAccount()
+	{
+		for (MDepreciationWorkfile wk : MDepreciationWorkfile.forA_Asset_ID(getCtx(), getA_Asset_ID(), get_TrxName()))
+		{
+			MAssetAcct assetAcct = MAssetAcct.forA_Asset_ID(getCtx(), wk.getC_AcctSchema_ID(), getA_Asset_ID(), wk.getPostingType(), getDateAcct(), get_TrxName());
+			int acctId = 0;
+			if (assetAcct != null)
+			{
+				acctId = assetAcct.getZZDisposalProratedAdj_Acct();
+			}
+			if (acctId <= 0)
+			{
+				MAsset asset = getAsset();
+				if (asset != null && asset.getA_Asset_Group_ID() > 0)
+				{
+					MAssetGroupAcct grpAcct = MAssetGroupAcct.forA_Asset_Group_ID(getCtx(), asset.getA_Asset_Group_ID(), wk.getPostingType(), wk.getC_AcctSchema_ID());
+					if (grpAcct != null)
+					{
+						acctId = grpAcct.getZZDisposalProratedAdj_Acct();
+					}
+				}
+			}
+			if (acctId <= 0)
+			{
+				throw new AdempiereException("Account " + I_A_Asset_Acct.COLUMNNAME_ZZDisposalProratedAdj_Acct 
+						+ " is not defined for asset (ID=" + getA_Asset_ID() 
+						+ ", AcctSchema=" + wk.getC_AcctSchema_ID() + "). Processing stopped.");
+			}
+		}
+	}
+
+	/**
+	 * Calculate required cumulative depreciation for Backward calculation (by days).
+	 * Determines excess depreciation posted after disposalDate and subtracts from currentPostedDepr.
+	 */
+	private BigDecimal calculateBackwardDailyDepreciation(MDepreciationWorkfile assetwk, LocalDate disposalDate,
+			BigDecimal currentPostedDepr, int scale)
+	{
+		LocalDate disposalMonthStart = disposalDate.with(TemporalAdjusters.firstDayOfMonth());
+		LocalDate disposalMonthEnd = disposalDate.with(TemporalAdjusters.lastDayOfMonth());
+		
+		List<MDepreciationExp> processedEntries = getProcessedDepreciationExpFrom(assetwk, disposalMonthStart);
+		BigDecimal totalExcess = Env.ZERO;
+		
+		BigDecimal postedDisposalMonthExpense = Env.ZERO;
+		MDepreciationExp lastEntryInDisposalMonth = null;
+		
+		for (MDepreciationExp exp : processedEntries)
+		{
+			if (exp.getDateAcct() == null || exp.getExpense() == null || exp.getExpense().signum() <= 0)
+			{
+				continue;
+			}
+			
+			LocalDate expDate = exp.getDateAcct().toLocalDateTime().toLocalDate();
+			LocalDate expMonthStart = expDate.with(TemporalAdjusters.firstDayOfMonth());
+			
+			if (expMonthStart.equals(disposalMonthStart))
+			{
+				postedDisposalMonthExpense = postedDisposalMonthExpense.add(exp.getExpense());
+				lastEntryInDisposalMonth = exp;
+			}
+			else if (expMonthStart.isAfter(disposalMonthStart))
+			{
+				// Entire subsequent month is excess
+				totalExcess = totalExcess.add(exp.getExpense());
+			}
+		}
+		
+		if (postedDisposalMonthExpense.signum() > 0)
+		{
+			LocalDate startDay = disposalMonthStart;
+			Timestamp serviceDateTS = assetwk.getAssetServiceDate();
+			if (serviceDateTS != null)
+			{
+				LocalDate inService = serviceDateTS.toLocalDateTime().toLocalDate();
+				if (inService.isAfter(startDay))
+				{
+					startDay = inService;
+				}
+			}
+			
+			long activeDays = ChronoUnit.DAYS.between(startDay, disposalDate) + 1;
+			if (activeDays <= 0)
+			{
+				totalExcess = totalExcess.add(postedDisposalMonthExpense);
+			}
+			else if (disposalDate.equals(disposalMonthEnd) && startDay.getDayOfMonth() == 1)
+			{
+				// Full month was valid, no excess in disposal month
+			}
+			else
+			{
+				RateInfo rates = getDailyAndMonthlyRate(assetwk, lastEntryInDisposalMonth, scale);
+				BigDecimal validMonthDepr = BigDecimal.valueOf(activeDays).multiply(rates.dailyRate).setScale(scale, RoundingMode.HALF_UP);
+				if (validMonthDepr.compareTo(postedDisposalMonthExpense) < 0)
+				{
+					totalExcess = totalExcess.add(postedDisposalMonthExpense.subtract(validMonthDepr));
+				}
+			}
+		}
+		
+		BigDecimal requiredDepr = currentPostedDepr.subtract(totalExcess);
+		if (requiredDepr.signum() < 0)
+		{
+			requiredDepr = Env.ZERO;
+		}
+		return requiredDepr;
+	}
+
+	/**
+	 * Get processed depreciation entries starting from a given month
+	 */
+	private List<MDepreciationExp> getProcessedDepreciationExpFrom(MDepreciationWorkfile assetwk, LocalDate fromDate)
+	{
+		String whereClause = MDepreciationExp.COLUMNNAME_A_Asset_ID + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_PostingType + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_C_AcctSchema_ID + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_Processed + " = 'Y'"
+				+ " AND IsActive = 'Y'"
+				+ " AND " + MDepreciationExp.COLUMNNAME_DateAcct + " >= ?";
+		
+		Timestamp fromTS = Timestamp.valueOf(fromDate.atStartOfDay());
+		return new Query(getCtx(), MDepreciationExp.Table_Name, whereClause, get_TrxName())
+				.setParameters(assetwk.getA_Asset_ID(), assetwk.getPostingType(), assetwk.getC_AcctSchema_ID(), fromTS)
+				.setOrderBy(MDepreciationExp.COLUMNNAME_DateAcct + " ASC")
+				.list();
+	}
+
+	/**
+	 * Calculate forward cumulative depreciation by days up to disposalDate.
+	 */
+	private BigDecimal calculateForwardDailyDepreciation(MDepreciationWorkfile assetwk, MDepreciationExp lastExp,
+			LocalDate lastPostedDate, LocalDate disposalDate, BigDecimal currentPostedDepr, int scale)
+	{
+		BigDecimal maxDepr = assetwk.getA_Asset_Cost();
+		if (assetwk.getA_Salvage_Value() != null)
+		{
+			maxDepr = maxDepr.subtract(assetwk.getA_Salvage_Value());
+		}
+		if (maxDepr.signum() <= 0)
+		{
+			return currentPostedDepr;
+		}
+		
+		// Determine start date for forward calculation
+		LocalDate nextDate;
+		if (lastPostedDate != null)
+		{
+			nextDate = lastPostedDate.plusDays(1);
+		}
+		else
+		{
+			// Asset has not been depreciated yet
+			Timestamp serviceDate = assetwk.getAssetServiceDate();
+			if (serviceDate == null)
+			{
+				serviceDate = assetwk.getDateAcct();
+			}
+			if (serviceDate != null)
+			{
+				LocalDate inService = serviceDate.toLocalDateTime().toLocalDate();
+				if (inService.isAfter(disposalDate))
+				{
+					return Env.ZERO;
+				}
+				nextDate = inService;
+			}
+			else
+			{
+				nextDate = disposalDate.with(TemporalAdjusters.firstDayOfMonth());
+			}
+		}
+		
+		if (nextDate.isAfter(disposalDate))
+		{
+			return currentPostedDepr;
+		}
+		
+		RateInfo baseRates = getDailyAndMonthlyRate(assetwk, lastExp, scale);
+		BigDecimal accumDepr = currentPostedDepr;
+		LocalDate curDate = nextDate;
+		
+		while (!curDate.isAfter(disposalDate))
+		{
+			BigDecimal remainingToDepr = maxDepr.subtract(accumDepr);
+			if (remainingToDepr.signum() <= 0)
+			{
+				break;
+			}
+			
+			LocalDate curMonthEnd = curDate.with(TemporalAdjusters.lastDayOfMonth());
+			BigDecimal monthExpense = Env.ZERO;
+			
+			if (!disposalDate.isBefore(curMonthEnd) && curDate.getDayOfMonth() == 1)
+			{
+				// Full calendar month
+				MDepreciationExp unpostedExp = getUnpostedDepreciationExp(assetwk, curMonthEnd);
+				if (unpostedExp != null && unpostedExp.getExpense() != null && unpostedExp.getExpense().signum() > 0)
+				{
+					monthExpense = unpostedExp.getExpense();
+				}
+				else
+				{
+					monthExpense = baseRates.monthlyRate;
+				}
+				curDate = curMonthEnd.plusDays(1);
+			}
+			else
+			{
+				// Partial month (either first partial month, or disposal month)
+				LocalDate rangeEnd = disposalDate.isBefore(curMonthEnd) ? disposalDate : curMonthEnd;
+				long activeDays = ChronoUnit.DAYS.between(curDate, rangeEnd) + 1;
+				if (activeDays > 0)
+				{
+					monthExpense = BigDecimal.valueOf(activeDays).multiply(baseRates.dailyRate).setScale(scale, RoundingMode.HALF_UP);
+				}
+				curDate = rangeEnd.plusDays(1);
+			}
+			
+			if (monthExpense.compareTo(remainingToDepr) > 0)
+			{
+				monthExpense = remainingToDepr;
+			}
+			accumDepr = accumDepr.add(monthExpense);
+		}
+		
+		return accumDepr;
+	}
+
+	/**
+	 * Get last processed depreciation entry for the asset
+	 */
+	private MDepreciationExp getLastProcessedDepreciationExp(Properties ctx, int assetID, String postingType, int acctSchemaID, String trxName)
+	{
+		String whereClause = MDepreciationExp.COLUMNNAME_A_Asset_ID + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_PostingType + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_Processed + " = ?"
+				+ " AND IsActive = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_C_AcctSchema_ID + " = ?";
+		
+		return new Query(ctx, MDepreciationExp.Table_Name, whereClause, trxName)
+				.setParameters(assetID, postingType, true, true, acctSchemaID)
+				.setOrderBy(MDepreciationExp.COLUMNNAME_DateAcct + " DESC, " + MDepreciationExp.COLUMNNAME_A_Period + " DESC")
+				.first();
+	}
+
+	/**
+	 * Get unposted depreciation entry for a specific month
+	 */
+	private MDepreciationExp getUnpostedDepreciationExp(MDepreciationWorkfile assetwk, LocalDate monthEnd)
+	{
+		String whereClause = MDepreciationExp.COLUMNNAME_A_Asset_ID + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_PostingType + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_C_AcctSchema_ID + " = ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_Processed + " = 'N'"
+				+ " AND IsActive = 'Y'"
+				+ " AND " + MDepreciationExp.COLUMNNAME_DateAcct + " >= ?"
+				+ " AND " + MDepreciationExp.COLUMNNAME_DateAcct + " <= ?";
+		
+		Timestamp startOfMonth = Timestamp.valueOf(monthEnd.with(TemporalAdjusters.firstDayOfMonth()).atStartOfDay());
+		Timestamp endOfMonth = Timestamp.valueOf(monthEnd.atTime(23, 59, 59));
+		
+		return new Query(getCtx(), MDepreciationExp.Table_Name, whereClause, get_TrxName())
+				.setParameters(assetwk.getA_Asset_ID(), assetwk.getPostingType(), assetwk.getC_AcctSchema_ID(), startOfMonth, endOfMonth)
+				.first();
 	}
 }

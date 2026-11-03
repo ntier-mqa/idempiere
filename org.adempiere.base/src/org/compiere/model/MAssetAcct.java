@@ -255,4 +255,32 @@ public class MAssetAcct extends X_A_Asset_Acct implements ImmutablePOSupport
 		return this;
 	}
 
+	/**
+	 * Check if asset is configured for prorated disposal.
+	 * Checks ZZDisposedProrated on this asset account, and if null falls back to asset group account.
+	 * @return true if 'Y', false if 'N' or null
+	 */
+	public boolean isZZDisposedProrated()
+	{
+		String val = getZZDisposedProrated();
+		if (ZZDISPOSEDPRORATED_Yes.equals(val))
+			return true;
+		if (ZZDISPOSEDPRORATED_No.equals(val))
+			return false;
+		// Fallback to Asset Group Acct
+		if (getA_Asset_ID() > 0)
+		{
+			I_A_Asset asset = getA_Asset();
+			if (asset != null && asset.getA_Asset_Group_ID() > 0)
+			{
+				MAssetGroupAcct grpAcct = MAssetGroupAcct.forA_Asset_Group_ID(getCtx(), asset.getA_Asset_Group_ID(), getPostingType(), getC_AcctSchema_ID());
+				if (grpAcct != null)
+				{
+					return grpAcct.isZZDisposedProrated();
+				}
+			}
+		}
+		return false;
+	}
+
 }	//	class MAssetAcct
